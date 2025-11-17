@@ -104,6 +104,55 @@
                               placeholder="example.com&#10;subdomain.example.com&#10;another-domain.com" required></textarea>
                     <small>Enter primary domains to scan for subdomains, services, and vulnerabilities</small>
                 </div>
+
+                <!-- Proxy Configuration -->
+                <div class="modal-section">
+                    <div class="modal-section-header" onclick="toggleProxyConfig()">
+                        <h3>🔒 Proxy Configuration (Optional)</h3>
+                        <span id="proxy-toggle-icon">▼</span>
+                    </div>
+                    <div id="proxy-config-section" class="proxy-config hidden">
+                        <div class="modal-field">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="modal-proxy-enabled" name="proxy-enabled">
+                                <span>Enable Proxy</span>
+                            </label>
+                        </div>
+                        <div id="proxy-settings" class="proxy-settings hidden">
+                            <div class="modal-field">
+                                <label for="modal-proxy-type">Proxy Type</label>
+                                <select id="modal-proxy-type" name="proxy-type">
+                                    <option value="http">HTTP</option>
+                                    <option value="https">HTTPS</option>
+                                    <option value="socks4">SOCKS4</option>
+                                    <option value="socks5">SOCKS5</option>
+                                </select>
+                            </div>
+                            <div class="modal-field-group">
+                                <div class="modal-field">
+                                    <label for="modal-proxy-host">Proxy Host <span class="required">*</span></label>
+                                    <input id="modal-proxy-host" name="proxy-host" type="text" placeholder="proxy.example.com">
+                                </div>
+                                <div class="modal-field">
+                                    <label for="modal-proxy-port">Port <span class="required">*</span></label>
+                                    <input id="modal-proxy-port" name="proxy-port" type="text" placeholder="8080">
+                                </div>
+                            </div>
+                            <div class="modal-field-group">
+                                <div class="modal-field">
+                                    <label for="modal-proxy-user">Username (optional)</label>
+                                    <input id="modal-proxy-user" name="proxy-user" type="text" placeholder="username">
+                                </div>
+                                <div class="modal-field">
+                                    <label for="modal-proxy-pass">Password (optional)</label>
+                                    <input id="modal-proxy-pass" name="proxy-pass" type="password" placeholder="password">
+                                </div>
+                            </div>
+                            <small>⚠️ Proxy credentials are not stored for security reasons. You'll need to re-enter them for each scan.</small>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="modal-field hidden" id="modal-schedule-field">
                     <label for="modal-schedule">Schedule Start Time</label>
                     <input id="modal-schedule" name="schedule" type="datetime-local">
