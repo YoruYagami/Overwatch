@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Overwatch Security Scanner</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+</head>
+<body data-theme="dark">
+    <header class="top-bar">
+        <div class="brand">
+            <div class="brand-title">
+                <h1>🔍 Overwatch Security Scanner</h1>
+            </div>
+            <p class="tagline">Comprehensive Attack Surface Management & Vulnerability Discovery Platform</p>
+        </div>
+        <div class="top-actions">
+            <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Toggle theme">
+                <span class="theme-icon">🌙</span>
+            </button>
+        </div>
+    </header>
+
+    <main>
+        <section class="panel">
+            <div class="panel-header">
+                <div>
+                    <h2>Scan Management</h2>
+                    <p class="panel-subtitle">Manage security scans, view results, and schedule future assessments</p>
+                </div>
+                <div class="panel-actions">
+                    <button id="new-scan-btn" type="button" class="btn-primary">
+                        <span>+ New Scan</span>
+                    </button>
+                    <button id="modify-scan-btn" type="button" class="btn-secondary" disabled>
+                        <span>✏️ Modify</span>
+                    </button>
+                    <button id="delete-scan-btn" type="button" class="btn-danger" disabled>
+                        <span>🗑️ Delete</span>
+                    </button>
+                </div>
+            </div>
+
+            <div id="flash-message" class="flash" role="alert" aria-live="polite"></div>
+
+            <div class="table-wrapper">
+                <table id="scan-table">
+                    <thead>
+                        <tr>
+                            <th scope="col" class="select-col">
+                                <input type="checkbox" id="select-all" aria-label="Select all scans">
+                            </th>
+                            <th scope="col">#</th>
+                            <th scope="col">Project Name</th>
+                            <th scope="col">Targets</th>
+                            <th scope="col">Progress</th>
+                            <th scope="col">Last Run</th>
+                            <th scope="col">Status</th>
+                            <th scope="col">Results</th>
+                            <th scope="col" class="actions-col">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="scan-table-body">
+                        <tr class="empty">
+                            <td colspan="9">
+                                <div class="empty-state">
+                                    <div class="empty-icon">🔍</div>
+                                    <p>No scans yet. Click <strong>New Scan</strong> to get started.</p>
+                                </div>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <p>
+            Overwatch Security Scanner v1.0 |
+            Powered by <a href="https://projectdiscovery.io" target="_blank" rel="noopener">ProjectDiscovery</a> Tools
+        </p>
+    </footer>
+
+    <!-- Modal -->
+    <div id="modal-backdrop" class="modal-backdrop hidden"></div>
+
+    <section id="scan-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+        <div class="modal-content">
+            <header class="modal-header">
+                <h2 id="modal-title">New Scan</h2>
+                <button id="modal-close" type="button" aria-label="Close" class="modal-close">&times;</button>
+            </header>
+            <form id="modal-form">
+                <div class="modal-field">
+                    <label for="modal-project-name">Project Name <span class="required">*</span></label>
+                    <input id="modal-project-name" name="project-name" type="text"
+                           placeholder="e.g., My Company Security Scan" required>
+                    <small>A descriptive name for this security assessment</small>
+                </div>
+                <div class="modal-field">
+                    <label for="modal-targets">Target Domains <small>(one per line)</small> <span class="required">*</span></label>
+                    <textarea id="modal-targets" name="targets" rows="8"
+                              placeholder="example.com&#10;subdomain.example.com&#10;another-domain.com" required></textarea>
+                    <small>Enter primary domains to scan for subdomains, services, and vulnerabilities</small>
+                </div>
+                <div class="modal-field hidden" id="modal-schedule-field">
+                    <label for="modal-schedule">Schedule Start Time</label>
+                    <input id="modal-schedule" name="schedule" type="datetime-local">
+                    <small>Optional: Schedule scan to run at a specific time</small>
+                </div>
+                <div id="modal-feedback" class="feedback" aria-live="polite"></div>
+                <div class="modal-actions">
+                    <button type="button" data-run-mode="immediate" class="btn-primary">▶️ Run Now</button>
+                    <button type="button" data-run-mode="queue" class="btn-secondary">📋 Add to Queue</button>
+                    <button type="button" data-run-mode="schedule" class="btn-secondary">📅 Schedule</button>
+                    <button type="button" id="modal-cancel" class="btn-cancel">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </section>
+
+    <!-- Targets View Modal -->
+    <section id="targets-modal" class="modal hidden" role="dialog" aria-modal="true">
+        <div class="modal-content modal-small">
+            <header class="modal-header">
+                <h2>Target Domains</h2>
+                <button class="modal-close targets-modal-close" type="button" aria-label="Close">&times;</button>
+            </header>
+            <div class="modal-body">
+                <div id="targets-list" class="targets-list"></div>
+            </div>
+        </div>
+    </section>
+
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>
