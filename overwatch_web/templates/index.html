@@ -106,12 +106,29 @@
                 </div>
 
                 <!-- Scan Options -->
-                <div class="modal-field">
-                    <label class="checkbox-label">
-                        <input type="checkbox" id="modal-skip-subdomain" name="skip-subdomain">
-                        <span>Skip Subdomain Discovery (scan only provided targets)</span>
-                    </label>
-                    <small>⚡ Enable this to scan only the exact domains you provide, without discovering subdomains</small>
+                <div class="modal-section scan-options-section">
+                    <div class="modal-section-header" onclick="toggleScanOptions()">
+                        <h3>⚙️ Scan Options</h3>
+                        <span id="scan-options-toggle-icon">▼</span>
+                    </div>
+                    <div id="scan-options-section" class="scan-options-config hidden">
+                        <div class="option-card">
+                            <div class="option-header">
+                                <label class="checkbox-label-large">
+                                    <input type="checkbox" id="modal-skip-subdomain" name="skip-subdomain" class="option-checkbox">
+                                    <span class="option-title">⚡ Skip Subdomain Discovery</span>
+                                </label>
+                            </div>
+                            <div class="option-description">
+                                <p>Scan <strong>only</strong> the exact domains you provide, without discovering additional subdomains.</p>
+                                <ul class="option-features">
+                                    <li>✓ Faster scans (skips enumeration phase)</li>
+                                    <li>✓ Focused on specific targets</li>
+                                    <li>✓ No subfinder/assetfinder execution</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Proxy Configuration -->

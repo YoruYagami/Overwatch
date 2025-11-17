@@ -96,6 +96,15 @@ function toggleProxyConfig() {
     icon.classList.toggle('rotated');
 }
 
+// Toggle Scan Options Section
+function toggleScanOptions() {
+    const section = document.getElementById('scan-options-section');
+    const icon = document.getElementById('scan-options-toggle-icon');
+
+    section.classList.toggle('hidden');
+    icon.classList.toggle('rotated');
+}
+
 // Theme Management
 function initializeTheme() {
     const savedTheme = localStorage.getItem('theme') || 'dark';
