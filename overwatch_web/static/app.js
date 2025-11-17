@@ -267,9 +267,14 @@ function renderScans() {
             <td>${renderStatus(scan.status, scan.status_message)}</td>
             <td>
                 ${scan.report ?
-                    `<a href="${scan.report}" target="_blank" class="btn-secondary" style="padding: 0.5rem 1rem; text-decoration: none;">
-                        📊 View Report
-                    </a>` :
+                    `<div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                        <a href="${scan.report}" target="_blank" class="btn-secondary" style="padding: 0.5rem 1rem; text-decoration: none;">
+                            📊 View Report
+                        </a>
+                        <a href="/analyzer/${scan.slug}/${scan.run_id}" class="btn-secondary" style="padding: 0.5rem 1rem; text-decoration: none;">
+                            🔍 Analyze
+                        </a>
+                    </div>` :
                     '<span style="color: var(--text-secondary);">No report</span>'
                 }
             </td>

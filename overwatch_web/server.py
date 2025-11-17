@@ -1208,4 +1208,26 @@ def create_app() -> Flask:
         filename = f"{slug}-{run_id}-datasets.zip"
         return send_file(archive, mimetype="application/zip", as_attachment=True, download_name=filename)
 
+    @app.route("/projects/<slug>/runs/<run_id>/data", methods=["GET"])
+    def get_run_data(slug: str, run_id: str):
+        """Get scan data for interactive analysis"""
+        run_dir = (PROJECTS_DIR / slug / run_id).resolve()
+        expected = (PROJECTS_DIR / slug).resolve()
+        if not expected.exists() or not run_dir.is_dir():
+            return jsonify({"error": f"Run {run_id} not found"}), 404
+        if expected not in run_dir.parents and run_dir != expected:
+            return jsonify({"error": "Invalid run path"}), 404
+
+        datasets = load_run_datasets(run_dir)
+        return jsonify({
+            "project": slug,
+            "run_id": run_id,
+            "datasets": datasets
+        })
+
+    @app.route("/analyzer/<slug>/<run_id>")
+    def results_analyzer(slug: str, run_id: str):
+        """Interactive results analyzer page"""
+        return render_template("analyzer.html", slug=slug, run_id=run_id)
+
     return app
