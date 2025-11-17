@@ -105,6 +105,15 @@
                     <small>Enter primary domains to scan for subdomains, services, and vulnerabilities</small>
                 </div>
 
+                <!-- Scan Options -->
+                <div class="modal-field">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="modal-skip-subdomain" name="skip-subdomain">
+                        <span>Skip Subdomain Discovery (scan only provided targets)</span>
+                    </label>
+                    <small>⚡ Enable this to scan only the exact domains you provide, without discovering subdomains</small>
+                </div>
+
                 <!-- Proxy Configuration -->
                 <div class="modal-section">
                     <div class="modal-section-header" onclick="toggleProxyConfig()">

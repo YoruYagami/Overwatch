@@ -243,6 +243,7 @@ class ScanJob:
     proxy_port: str = ""
     proxy_user: str = ""
     proxy_pass: str = ""
+    skip_subdomain_enum: bool = False
     id: str = field(default_factory=lambda: f"job-{datetime.now().strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:8]}")
     created_at: datetime = field(default_factory=utc_now)
     enqueued_at: datetime = field(default_factory=utc_now)
@@ -562,6 +563,10 @@ class JobManager:
                     env["PROXY_USER"] = job.proxy_user
                 if job.proxy_pass:
                     env["PROXY_PASS"] = job.proxy_pass
+
+            # Configure scan options
+            if job.skip_subdomain_enum:
+                env["SKIP_SUBDOMAIN_ENUM"] = "true"
 
             cmd = ["bash", str(SCANNER_SCRIPT), str(job.targets_file)]
 
@@ -900,6 +905,7 @@ def create_app() -> Flask:
         proxy_port: str = "",
         proxy_user: str = "",
         proxy_pass: str = "",
+        skip_subdomain_enum: bool = False,
     ) -> Tuple[ScanJob, str]:
         job = ScanJob(
             project_name=project_name,
@@ -914,6 +920,7 @@ def create_app() -> Flask:
             proxy_port=proxy_port,
             proxy_user=proxy_user,
             proxy_pass=proxy_pass,
+            skip_subdomain_enum=skip_subdomain_enum,
         )
         job.status = "pending"
         job.status_message = "Queued"
@@ -946,6 +953,9 @@ def create_app() -> Flask:
         proxy_port = (payload.get("proxy_port") or "").strip()
         proxy_user = (payload.get("proxy_user") or "").strip()
         proxy_pass = (payload.get("proxy_pass") or "").strip()
+
+        # Extract scan options
+        skip_subdomain_enum = payload.get("skip_subdomain_enum", False)
 
         if not project_name:
             return jsonify({"error": "Project name is required."}), 400
@@ -989,6 +999,7 @@ def create_app() -> Flask:
             "proxy_type": proxy_type if proxy_enabled else None,
             "proxy_host": proxy_host if proxy_enabled else None,
             "proxy_port": proxy_port if proxy_enabled else None,
+            "skip_subdomain_enum": skip_subdomain_enum,
             "runs": [],
         }
         save_metadata(project_dir, metadata)
@@ -1000,7 +1011,8 @@ def create_app() -> Flask:
         if start_mode in {"immediate", "queue", "schedule"}:
             job, message = submit_scan_job(
                 project_name, slug, targets, targets_file, start_mode, scheduled_for,
-                proxy_enabled, proxy_type, proxy_host, proxy_port, proxy_user, proxy_pass
+                proxy_enabled, proxy_type, proxy_host, proxy_port, proxy_user, proxy_pass,
+                skip_subdomain_enum
             )
             job_info = job.to_dict()
 
@@ -1139,9 +1151,13 @@ def create_app() -> Flask:
         proxy_user = ""
         proxy_pass = ""
 
+        # Load scan options from metadata
+        skip_subdomain_enum = metadata.get("skip_subdomain_enum", False)
+
         job, message = submit_scan_job(
             metadata.get("name", slug), slug, targets, targets_file, "immediate", None,
-            proxy_enabled, proxy_type, proxy_host, proxy_port, proxy_user, proxy_pass
+            proxy_enabled, proxy_type, proxy_host, proxy_port, proxy_user, proxy_pass,
+            skip_subdomain_enum
         )
         rows = assemble_scan_rows()
         scan_row = next((row for row in rows if row["slug"] == slug), None)

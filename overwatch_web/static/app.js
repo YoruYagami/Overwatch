@@ -37,6 +37,9 @@ const proxyPort = document.getElementById('modal-proxy-port');
 const proxyUser = document.getElementById('modal-proxy-user');
 const proxyPass = document.getElementById('modal-proxy-pass');
 
+// Scan Options
+const skipSubdomain = document.getElementById('modal-skip-subdomain');
+
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
     loadScans();
@@ -432,7 +435,8 @@ async function handleSubmit(runMode) {
         proxy_host: proxyHost.value.trim(),
         proxy_port: proxyPort.value.trim(),
         proxy_user: proxyUser.value.trim(),
-        proxy_pass: proxyPass.value.trim()
+        proxy_pass: proxyPass.value.trim(),
+        skip_subdomain_enum: skipSubdomain.checked
     };
 
     try {
