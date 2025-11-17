@@ -60,6 +60,38 @@ PROXY_PASS="${PROXY_PASS:-}"
 
 # Scan Options
 SKIP_SUBDOMAIN_ENUM="${SKIP_SUBDOMAIN_ENUM:-false}"
+MAX_RETRIES="${MAX_RETRIES:-3}"
+TOOL_TIMEOUT="${TOOL_TIMEOUT:-300}"
+
+# Retry function for resilient tool execution
+retry_command() {
+    local max_attempts="$1"
+    local timeout="$2"
+    local command_name="$3"
+    shift 3
+    local cmd=("$@")
+
+    local attempt=1
+    while [ $attempt -le $max_attempts ]; do
+        step "Attempt $attempt/$max_attempts: $command_name"
+
+        if timeout "$timeout" "${cmd[@]}" 2>/dev/null; then
+            info "$command_name completed successfully"
+            return 0
+        else
+            local exit_code=$?
+            if [ $attempt -lt $max_attempts ]; then
+                warning "$command_name failed (exit code $exit_code), retrying in 5s..."
+                sleep 5
+            else
+                warning "$command_name failed after $max_attempts attempts (exit code $exit_code), continuing anyway..."
+                return $exit_code
+            fi
+        fi
+        attempt=$((attempt + 1))
+    done
+    return 1
+}
 
 # Setup proxy environment variables if enabled
 setup_proxy() {
@@ -180,11 +212,14 @@ if [ "$SKIP_SUBDOMAIN_ENUM" = "true" ]; then
     info "Using $SUBDOMAIN_COUNT provided target(s)"
 else
     info "[2/${TOTAL_STEPS}] Enumerating subdomains..."
-    step "Running subfinder..."
-    subfinder -dL "$TARGETS_FILE" -all -silent -o "$RUN_DIR/raw/subfinder.txt" 2>/dev/null || true
 
-    step "Running assetfinder..."
-    cat "$TARGETS_FILE" | assetfinder --subs-only 2>/dev/null > "$RUN_DIR/raw/assetfinder.txt" || true
+    # Run subfinder with retry logic
+    retry_command $MAX_RETRIES $TOOL_TIMEOUT "subfinder" \
+        subfinder -dL "$TARGETS_FILE" -all -silent -o "$RUN_DIR/raw/subfinder.txt" || true
+
+    # Run assetfinder with retry logic
+    retry_command $MAX_RETRIES $TOOL_TIMEOUT "assetfinder" \
+        bash -c "cat \"$TARGETS_FILE\" | assetfinder --subs-only > \"$RUN_DIR/raw/assetfinder.txt\"" || true
 
     # Combine and deduplicate
     cat "$RUN_DIR/raw/subfinder.txt" "$RUN_DIR/raw/assetfinder.txt" 2>/dev/null | \
@@ -200,7 +235,8 @@ fi
 
 # Step 3: DNS Resolution
 info "[3/${TOTAL_STEPS}] Resolving DNS records..."
-dnsx -l "$ALL_SUBDOMAINS" -silent -json -o "$DNSX_JSON" 2>/dev/null || true
+retry_command $MAX_RETRIES $TOOL_TIMEOUT "dnsx" \
+    dnsx -l "$ALL_SUBDOMAINS" -silent -json -o "$DNSX_JSON" || true
 cat "$DNSX_JSON" | jq -r '.host' 2>/dev/null | sort -u > "$LIVE_SUBDOMAINS"
 LIVE_DNS_COUNT=$(wc -l < "$LIVE_SUBDOMAINS")
 info "Found $LIVE_DNS_COUNT live domains"
@@ -212,9 +248,10 @@ fi
 
 # Step 4: HTTP Probing
 info "[4/${TOTAL_STEPS}] Probing HTTP/HTTPS services..."
-httpx -l "$LIVE_SUBDOMAINS" -silent -json -o "$HTTPX_JSON" \
-    -status-code -title -tech-detect -content-length -web-server \
-    -follow-redirects -random-agent -retries 2 -timeout 10 2>/dev/null || true
+retry_command $MAX_RETRIES $TOOL_TIMEOUT "httpx" \
+    httpx -l "$LIVE_SUBDOMAINS" -silent -json -o "$HTTPX_JSON" \
+        -status-code -title -tech-detect -content-length -web-server \
+        -follow-redirects -random-agent -retries 2 -timeout 10 || true
 
 cat "$HTTPX_JSON" | jq -r '.url' 2>/dev/null | sort -u > "$LIVE_HTTP"
 LIVE_HTTP_COUNT=$(wc -l < "$LIVE_HTTP")
@@ -222,8 +259,9 @@ info "Found $LIVE_HTTP_COUNT live HTTP services"
 
 # Step 5: Port Scanning
 info "[5/${TOTAL_STEPS}] Scanning ports..."
-naabu -l "$LIVE_SUBDOMAINS" -silent -json -o "$NAABU_JSON" \
-    -top-ports 1000 -rate 1000 -retries 2 2>/dev/null || true
+retry_command $MAX_RETRIES $TOOL_TIMEOUT "naabu" \
+    naabu -l "$LIVE_SUBDOMAINS" -silent -json -o "$NAABU_JSON" \
+        -top-ports 1000 -rate 1000 -retries 2 || true
 
 # Process port scan results
 if [ -f "$NAABU_JSON" ] && [ -s "$NAABU_JSON" ]; then
@@ -259,8 +297,9 @@ fi
 # Step 7: Screenshot capture
 info "[7/${TOTAL_STEPS}] Capturing screenshots..."
 if [ "$LIVE_HTTP_COUNT" -gt 0 ] && [ "$LIVE_HTTP_COUNT" -lt 100 ]; then
-    httpx -l "$LIVE_HTTP" -silent -screenshot -screenshot-path "$RUN_DIR/screenshots" \
-        -system-chrome -timeout 15 2>/dev/null || true
+    retry_command $MAX_RETRIES $TOOL_TIMEOUT "httpx-screenshot" \
+        httpx -l "$LIVE_HTTP" -silent -screenshot -screenshot-path "$RUN_DIR/screenshots" \
+            -system-chrome -timeout 15 || true
     SCREENSHOT_COUNT=$(find "$RUN_DIR/screenshots" -type f 2>/dev/null | wc -l)
     info "Captured $SCREENSHOT_COUNT screenshots"
 else
@@ -270,9 +309,10 @@ fi
 # Step 8: Vulnerability Scanning with Nuclei
 info "[8/${TOTAL_STEPS}] Running vulnerability scans..."
 if [ "$LIVE_HTTP_COUNT" -gt 0 ]; then
-    nuclei -l "$LIVE_HTTP" -silent -json -o "$NUCLEI_JSON" \
-        -severity critical,high,medium -tags cve,exposure,misconfig \
-        -rate-limit 50 -bulk-size 25 -c 25 2>/dev/null || true
+    retry_command $MAX_RETRIES 900 "nuclei" \
+        nuclei -l "$LIVE_HTTP" -silent -json -o "$NUCLEI_JSON" \
+            -severity critical,high,medium -tags cve,exposure,misconfig \
+            -rate-limit 50 -bulk-size 25 -c 25 || true
 
     if [ -f "$NUCLEI_JSON" ] && [ -s "$NUCLEI_JSON" ]; then
         VULN_COUNT=$(wc -l < "$NUCLEI_JSON")

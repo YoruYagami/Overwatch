@@ -594,12 +594,17 @@ footer a:hover {
     text-decoration: underline;
 }
 
-/* Proxy Configuration Section */
+/* Modal Sections (Proxy, Scan Options, etc.) */
 .modal-section {
     margin-bottom: 1.5rem;
     border: 2px solid var(--border-color);
     border-radius: 8px;
     overflow: hidden;
+}
+
+.scan-options-section {
+    border-color: var(--accent-primary);
+    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.1);
 }
 
 .modal-section-header {
@@ -623,12 +628,14 @@ footer a:hover {
     color: var(--text-primary);
 }
 
-#proxy-toggle-icon {
+#proxy-toggle-icon,
+#scan-options-toggle-icon {
     font-size: 0.8rem;
     transition: transform 0.3s ease;
 }
 
-#proxy-toggle-icon.rotated {
+#proxy-toggle-icon.rotated,
+#scan-options-toggle-icon.rotated {
     transform: rotate(180deg);
 }
 
@@ -643,6 +650,28 @@ footer a:hover {
     border-top: 1px solid var(--border-color);
 }
 
+.scan-options-config {
+    padding: 1.5rem;
+    background: var(--bg-secondary);
+}
+
+.option-card {
+    background: var(--bg-primary);
+    border: 2px solid var(--border-color);
+    border-radius: 8px;
+    padding: 1.25rem;
+    transition: all 0.2s ease;
+}
+
+.option-card:hover {
+    border-color: var(--accent-primary);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.15);
+}
+
+.option-header {
+    margin-bottom: 1rem;
+}
+
 .checkbox-label {
     display: flex;
     align-items: center;
@@ -654,6 +683,53 @@ footer a:hover {
 .checkbox-label input[type="checkbox"] {
     width: auto;
     cursor: pointer;
+}
+
+.checkbox-label-large {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    cursor: pointer;
+}
+
+.option-checkbox {
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+    accent-color: var(--accent-primary);
+}
+
+.option-title {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.option-description {
+    margin-left: 2rem;
+}
+
+.option-description p {
+    color: var(--text-secondary);
+    line-height: 1.6;
+    margin-bottom: 0.75rem;
+}
+
+.option-description strong {
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.option-features {
+    list-style: none;
+    padding: 0;
+    margin: 0.5rem 0 0 0;
+}
+
+.option-features li {
+    padding: 0.35rem 0;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
 }
 
 .modal-field-group {
