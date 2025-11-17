@@ -80,6 +80,8 @@ go install -v github.com/tomnomnom/assetfinder@latest
 sudo apt-get install jq dnsutils whois curl chromium-browser
 
 # Run the web application
+python3 main.py
+# OR
 python -m overwatch_web
 ```
 
