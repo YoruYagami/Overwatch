@@ -58,6 +58,9 @@ PROXY_PORT="${PROXY_PORT:-}"
 PROXY_USER="${PROXY_USER:-}"
 PROXY_PASS="${PROXY_PASS:-}"
 
+# Scan Options
+SKIP_SUBDOMAIN_ENUM="${SKIP_SUBDOMAIN_ENUM:-false}"
+
 # Setup proxy environment variables if enabled
 setup_proxy() {
     if [ "$PROXY_ENABLED" = "true" ] && [ -n "$PROXY_HOST" ] && [ -n "$PROXY_PORT" ]; then
@@ -168,22 +171,30 @@ PORTS_JSON="$RUN_DIR/ports.json"
 # Check dependencies
 check_dependencies
 
-# Step 2: Subdomain Enumeration
-info "[2/${TOTAL_STEPS}] Enumerating subdomains..."
-step "Running subfinder..."
-subfinder -dL "$TARGETS_FILE" -all -silent -o "$RUN_DIR/raw/subfinder.txt" 2>/dev/null || true
+# Step 2: Subdomain Enumeration (Optional)
+if [ "$SKIP_SUBDOMAIN_ENUM" = "true" ]; then
+    info "[2/${TOTAL_STEPS}] Subdomain enumeration skipped (using provided targets only)"
+    # Use targets directly without subdomain discovery
+    cat "$TARGETS_FILE" | tr '[:upper:]' '[:lower:]' | sort -u > "$ALL_SUBDOMAINS"
+    SUBDOMAIN_COUNT=$(wc -l < "$ALL_SUBDOMAINS")
+    info "Using $SUBDOMAIN_COUNT provided target(s)"
+else
+    info "[2/${TOTAL_STEPS}] Enumerating subdomains..."
+    step "Running subfinder..."
+    subfinder -dL "$TARGETS_FILE" -all -silent -o "$RUN_DIR/raw/subfinder.txt" 2>/dev/null || true
 
-step "Running assetfinder..."
-cat "$TARGETS_FILE" | assetfinder --subs-only 2>/dev/null > "$RUN_DIR/raw/assetfinder.txt" || true
+    step "Running assetfinder..."
+    cat "$TARGETS_FILE" | assetfinder --subs-only 2>/dev/null > "$RUN_DIR/raw/assetfinder.txt" || true
 
-# Combine and deduplicate
-cat "$RUN_DIR/raw/subfinder.txt" "$RUN_DIR/raw/assetfinder.txt" 2>/dev/null | \
-    tr '[:upper:]' '[:lower:]' | sort -u > "$ALL_SUBDOMAINS"
-SUBDOMAIN_COUNT=$(wc -l < "$ALL_SUBDOMAINS")
-info "Found $SUBDOMAIN_COUNT unique subdomains"
+    # Combine and deduplicate
+    cat "$RUN_DIR/raw/subfinder.txt" "$RUN_DIR/raw/assetfinder.txt" 2>/dev/null | \
+        tr '[:upper:]' '[:lower:]' | sort -u > "$ALL_SUBDOMAINS"
+    SUBDOMAIN_COUNT=$(wc -l < "$ALL_SUBDOMAINS")
+    info "Found $SUBDOMAIN_COUNT unique subdomains"
+fi
 
 if [ "$SUBDOMAIN_COUNT" -eq 0 ]; then
-    warning "No subdomains found. Exiting."
+    warning "No targets to scan. Exiting."
     exit 0
 fi
 
