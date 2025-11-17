@@ -237,6 +237,12 @@ class ScanJob:
     targets_file: Path
     start_mode: str = "immediate"
     scheduled_for: Optional[datetime] = None
+    proxy_enabled: bool = False
+    proxy_type: str = "http"
+    proxy_host: str = ""
+    proxy_port: str = ""
+    proxy_user: str = ""
+    proxy_pass: str = ""
     id: str = field(default_factory=lambda: f"job-{datetime.now().strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:8]}")
     created_at: datetime = field(default_factory=utc_now)
     enqueued_at: datetime = field(default_factory=utc_now)
@@ -545,6 +551,18 @@ class JobManager:
         try:
             job.open_log(inflight_log)
             env = os.environ.copy()
+
+            # Configure proxy environment variables if enabled
+            if job.proxy_enabled and job.proxy_host and job.proxy_port:
+                env["PROXY_ENABLED"] = "true"
+                env["PROXY_TYPE"] = job.proxy_type
+                env["PROXY_HOST"] = job.proxy_host
+                env["PROXY_PORT"] = job.proxy_port
+                if job.proxy_user:
+                    env["PROXY_USER"] = job.proxy_user
+                if job.proxy_pass:
+                    env["PROXY_PASS"] = job.proxy_pass
+
             cmd = ["bash", str(SCANNER_SCRIPT), str(job.targets_file)]
 
             def stream_reader(pipe, tag: str) -> None:
@@ -876,6 +894,12 @@ def create_app() -> Flask:
         targets_file: Path,
         start_mode: str,
         scheduled_for: Optional[datetime],
+        proxy_enabled: bool = False,
+        proxy_type: str = "http",
+        proxy_host: str = "",
+        proxy_port: str = "",
+        proxy_user: str = "",
+        proxy_pass: str = "",
     ) -> Tuple[ScanJob, str]:
         job = ScanJob(
             project_name=project_name,
@@ -884,6 +908,12 @@ def create_app() -> Flask:
             targets_file=targets_file,
             start_mode=start_mode,
             scheduled_for=scheduled_for,
+            proxy_enabled=proxy_enabled,
+            proxy_type=proxy_type,
+            proxy_host=proxy_host,
+            proxy_port=proxy_port,
+            proxy_user=proxy_user,
+            proxy_pass=proxy_pass,
         )
         job.status = "pending"
         job.status_message = "Queued"
@@ -909,10 +939,25 @@ def create_app() -> Flask:
         start_mode = (payload.get("start_mode") or "immediate").strip().lower()
         scheduled_raw = (payload.get("scheduled_for") or "").strip()
 
+        # Extract proxy settings
+        proxy_enabled = payload.get("proxy_enabled", False)
+        proxy_type = (payload.get("proxy_type") or "http").strip().lower()
+        proxy_host = (payload.get("proxy_host") or "").strip()
+        proxy_port = (payload.get("proxy_port") or "").strip()
+        proxy_user = (payload.get("proxy_user") or "").strip()
+        proxy_pass = (payload.get("proxy_pass") or "").strip()
+
         if not project_name:
             return jsonify({"error": "Project name is required."}), 400
         if start_mode not in {"immediate", "queue", "schedule", "none"}:
             return jsonify({"error": "start_mode must be immediate, queue, schedule, or none."}), 400
+
+        # Validate proxy settings if enabled
+        if proxy_enabled:
+            if not proxy_host or not proxy_port:
+                return jsonify({"error": "Proxy host and port are required when proxy is enabled."}), 400
+            if proxy_type not in {"http", "https", "socks4", "socks5"}:
+                return jsonify({"error": "Invalid proxy type. Must be http, https, socks4, or socks5."}), 400
 
         try:
             targets = parse_targets(targets_raw)
@@ -940,6 +985,10 @@ def create_app() -> Flask:
             "slug": slug,
             "created_at": isoformat(utc_now()),
             "latest_targets": targets,
+            "proxy_enabled": proxy_enabled,
+            "proxy_type": proxy_type if proxy_enabled else None,
+            "proxy_host": proxy_host if proxy_enabled else None,
+            "proxy_port": proxy_port if proxy_enabled else None,
             "runs": [],
         }
         save_metadata(project_dir, metadata)
@@ -949,7 +998,10 @@ def create_app() -> Flask:
         message = "Scan saved."
 
         if start_mode in {"immediate", "queue", "schedule"}:
-            job, message = submit_scan_job(project_name, slug, targets, targets_file, start_mode, scheduled_for)
+            job, message = submit_scan_job(
+                project_name, slug, targets, targets_file, start_mode, scheduled_for,
+                proxy_enabled, proxy_type, proxy_host, proxy_port, proxy_user, proxy_pass
+            )
             job_info = job.to_dict()
 
         metadata["latest_targets"] = targets
@@ -1078,7 +1130,19 @@ def create_app() -> Flask:
         project_dir.mkdir(parents=True, exist_ok=True)
         targets_file = write_targets_file(project_dir, targets)
 
-        job, message = submit_scan_job(metadata.get("name", slug), slug, targets, targets_file, "immediate", None)
+        # Load proxy settings from metadata
+        proxy_enabled = metadata.get("proxy_enabled", False)
+        proxy_type = metadata.get("proxy_type", "http")
+        proxy_host = metadata.get("proxy_host", "")
+        proxy_port = metadata.get("proxy_port", "")
+        # Note: We don't store credentials in metadata for security
+        proxy_user = ""
+        proxy_pass = ""
+
+        job, message = submit_scan_job(
+            metadata.get("name", slug), slug, targets, targets_file, "immediate", None,
+            proxy_enabled, proxy_type, proxy_host, proxy_port, proxy_user, proxy_pass
+        )
         rows = assemble_scan_rows()
         scan_row = next((row for row in rows if row["slug"] == slug), None)
         return jsonify({"message": message, "scan": scan_row, "job": job.to_dict()})

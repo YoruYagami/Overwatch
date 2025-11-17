@@ -32,6 +32,7 @@
 ### ⚡ Advanced Features
 - **Job Queue System**: Manage multiple concurrent scans
 - **Scan Scheduling**: Schedule scans for specific date/time
+- **Proxy Support**: Full support for HTTP, HTTPS, SOCKS4, and SOCKS5 proxies with authentication
 - **Progress Tracking**: Real-time progress bars with detailed status
 - **Report Generation**: Self-contained HTML reports with embedded data
 - **Multi-format Export**: JSON and CSV export for all datasets
@@ -121,6 +122,31 @@ The HTML report includes:
 3. Click **"📅 Schedule"**
 4. Select date and time
 5. Scan will automatically run at scheduled time
+
+### Using Proxy Configuration
+
+Overwatch supports HTTP, HTTPS, SOCKS4, and SOCKS5 proxies for all scanning operations:
+
+1. When creating a scan, click **"🔒 Proxy Configuration"** to expand the proxy settings
+2. Check **"Enable Proxy"**
+3. Configure proxy settings:
+   - **Proxy Type**: Select HTTP, HTTPS, SOCKS4, or SOCKS5
+   - **Proxy Host**: Enter proxy server hostname or IP
+   - **Proxy Port**: Enter proxy port number
+   - **Username/Password** (optional): Add authentication if required
+
+**Supported Proxy Types:**
+- **HTTP/HTTPS**: Standard web proxies (e.g., Squid, Nginx)
+- **SOCKS4**: SOCKS version 4 proxies
+- **SOCKS5**: SOCKS version 5 proxies with authentication support
+
+**Security Note:** Proxy credentials are **not stored** in the database for security reasons. You'll need to re-enter credentials for each scan that requires authentication.
+
+**How It Works:**
+- All reconnaissance tools (Subfinder, DNSx, HTTPx, Nuclei) will route traffic through the configured proxy
+- Port scanning (Naabu) uses raw packets and may bypass proxies
+- Proxy configuration is saved per-project (excluding credentials)
+- Rescans automatically use the saved proxy settings
 
 ## 🏗️ Architecture
 

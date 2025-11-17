@@ -50,6 +50,56 @@ LIVE_HTTP_COUNT=0
 OPEN_PORTS_COUNT=0
 TOTAL_STEPS=10
 
+# Proxy Configuration
+PROXY_ENABLED="${PROXY_ENABLED:-false}"
+PROXY_TYPE="${PROXY_TYPE:-http}"  # http, socks4, socks5
+PROXY_HOST="${PROXY_HOST:-}"
+PROXY_PORT="${PROXY_PORT:-}"
+PROXY_USER="${PROXY_USER:-}"
+PROXY_PASS="${PROXY_PASS:-}"
+
+# Setup proxy environment variables if enabled
+setup_proxy() {
+    if [ "$PROXY_ENABLED" = "true" ] && [ -n "$PROXY_HOST" ] && [ -n "$PROXY_PORT" ]; then
+        local proxy_url=""
+
+        # Build proxy URL with authentication if provided
+        if [ -n "$PROXY_USER" ] && [ -n "$PROXY_PASS" ]; then
+            proxy_url="${PROXY_TYPE}://${PROXY_USER}:${PROXY_PASS}@${PROXY_HOST}:${PROXY_PORT}"
+        else
+            proxy_url="${PROXY_TYPE}://${PROXY_HOST}:${PROXY_PORT}"
+        fi
+
+        # Set environment variables for different proxy types
+        if [ "$PROXY_TYPE" = "http" ] || [ "$PROXY_TYPE" = "https" ]; then
+            export HTTP_PROXY="$proxy_url"
+            export HTTPS_PROXY="$proxy_url"
+            export http_proxy="$proxy_url"
+            export https_proxy="$proxy_url"
+            info "HTTP/HTTPS Proxy enabled: ${PROXY_HOST}:${PROXY_PORT}"
+        elif [ "$PROXY_TYPE" = "socks4" ] || [ "$PROXY_TYPE" = "socks5" ]; then
+            export ALL_PROXY="$proxy_url"
+            export HTTP_PROXY="$proxy_url"
+            export HTTPS_PROXY="$proxy_url"
+            info "SOCKS Proxy enabled: ${PROXY_TYPE}://${PROXY_HOST}:${PROXY_PORT}"
+        fi
+
+        # Save proxy info to run directory
+        cat > "$RUN_DIR/proxy_config.json" <<EOF
+{
+    "enabled": true,
+    "type": "$PROXY_TYPE",
+    "host": "$PROXY_HOST",
+    "port": "$PROXY_PORT",
+    "authenticated": $([ -n "$PROXY_USER" ] && echo "true" || echo "false")
+}
+EOF
+    else
+        info "No proxy configured"
+        echo '{"enabled": false}' > "$RUN_DIR/proxy_config.json"
+    fi
+}
+
 # Check if required tools are installed
 check_dependencies() {
     info "[1/${TOTAL_STEPS}] Checking dependencies..."
@@ -97,6 +147,9 @@ fi
 # Redirect logs
 exec 2>"$RUN_DIR/logs/scan.log"
 set -x
+
+# Setup proxy if configured
+setup_proxy
 
 # File paths
 ALL_SUBDOMAINS="$RUN_DIR/raw/all_subdomains.txt"

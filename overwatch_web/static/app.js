@@ -28,6 +28,15 @@ const flashMessage = document.getElementById('flash-message');
 const themeToggle = document.getElementById('theme-toggle');
 const targetsModal = document.getElementById('targets-modal');
 
+// Proxy Elements
+const proxyEnabled = document.getElementById('modal-proxy-enabled');
+const proxySettings = document.getElementById('proxy-settings');
+const proxyType = document.getElementById('modal-proxy-type');
+const proxyHost = document.getElementById('modal-proxy-host');
+const proxyPort = document.getElementById('modal-proxy-port');
+const proxyUser = document.getElementById('modal-proxy-user');
+const proxyPass = document.getElementById('modal-proxy-pass');
+
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
     loadScans();
@@ -47,6 +56,15 @@ function initializeEventListeners() {
     modalBackdrop.addEventListener('click', closeModal);
     themeToggle.addEventListener('click', toggleTheme);
 
+    // Proxy configuration toggle
+    proxyEnabled.addEventListener('change', () => {
+        if (proxyEnabled.checked) {
+            proxySettings.classList.remove('hidden');
+        } else {
+            proxySettings.classList.add('hidden');
+        }
+    });
+
     // Run mode buttons
     document.querySelectorAll('[data-run-mode]').forEach(btn => {
         btn.addEventListener('click', (e) => handleSubmit(e.target.dataset.runMode));
@@ -64,6 +82,15 @@ function initializeEventListeners() {
     document.querySelector('[data-run-mode="schedule"]').addEventListener('click', () => {
         modalScheduleField.classList.remove('hidden');
     });
+}
+
+// Toggle Proxy Configuration Section
+function toggleProxyConfig() {
+    const section = document.getElementById('proxy-config-section');
+    const icon = document.getElementById('proxy-toggle-icon');
+
+    section.classList.toggle('hidden');
+    icon.classList.toggle('rotated');
 }
 
 // Theme Management
@@ -369,6 +396,16 @@ async function handleSubmit(runMode) {
         return;
     }
 
+    // Validate proxy settings if enabled
+    if (proxyEnabled.checked) {
+        const pHost = proxyHost.value.trim();
+        const pPort = proxyPort.value.trim();
+        if (!pHost || !pPort) {
+            showModalFeedback('Proxy host and port are required when proxy is enabled', 'error');
+            return;
+        }
+    }
+
     if (runMode === 'schedule') {
         scheduledFor = modalSchedule.value;
         if (!scheduledFor) {
@@ -384,7 +421,13 @@ async function handleSubmit(runMode) {
         project_name: projectName,
         targets: targets,
         start_mode: runMode,
-        scheduled_for: scheduledFor
+        scheduled_for: scheduledFor,
+        proxy_enabled: proxyEnabled.checked,
+        proxy_type: proxyType.value,
+        proxy_host: proxyHost.value.trim(),
+        proxy_port: proxyPort.value.trim(),
+        proxy_user: proxyUser.value.trim(),
+        proxy_pass: proxyPass.value.trim()
     };
 
     try {
