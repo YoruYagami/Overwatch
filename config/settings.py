@@ -38,10 +38,11 @@ class Settings(BaseSettings):
     aws_key_name: Optional[str] = None  # SSH key pair name
 
     # =========================================================================
-    # WIREGUARD VPN
+    # WIREGUARD VPN (runs as VM on Proxmox)
     # =========================================================================
+    wg_proxmox_vmid: Optional[int] = None  # VMID of WireGuard VM on Proxmox
     wg_server_public_key: Optional[str] = None
-    wg_server_endpoint: Optional[str] = None
+    wg_server_endpoint: Optional[str] = None  # Public endpoint (e.g., ionos.domain.com:51820)
     wg_server_private_key: Optional[str] = None
     wg_interface: str = "wg0"
     wg_config_path: str = "/etc/wireguard"
