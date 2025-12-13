@@ -1,5 +1,11 @@
+# Environment
+.env
+.env.local
+.env.production
+
 # Output directory
 output/
+logs/
 
 # Python
 __pycache__/
@@ -10,6 +16,7 @@ __pycache__/
 venv/
 env/
 ENV/
+.venv/
 
 # IDEs
 .vscode/
@@ -28,3 +35,15 @@ Thumbs.db
 # Temporary files
 /tmp/
 *.tmp
+
+# Docker volumes (if mounted locally)
+postgres_data/
+wireguard_config/
+redis_data/
+
+# WireGuard configs (sensitive)
+*.conf
+!.env.example
+
+# Alembic
+alembic/versions/*.pyc

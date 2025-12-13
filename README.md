@@ -1,260 +1,254 @@
-# 🔍 Overwatch Security Scanner
+# VulnLab
 
-**Overwatch** is a comprehensive Attack Surface Management (ASM) and vulnerability discovery platform built with modern web technologies. Inspired by ProjectDiscovery Cloud and similar platforms, Overwatch provides a powerful web interface for managing security scans, scheduling assessments, and analyzing results.
+A Discord-based vulnerable machine lab platform inspired by VulnLab. Provides on-demand vulnerable machines for security training with WireGuard VPN access.
 
-![License](https://img.shields.io/badge/license-MIT-blue.svg)
-![Python](https://img.shields.io/badge/python-3.11+-blue.svg)
-![Docker](https://img.shields.io/badge/docker-ready-brightgreen.svg)
+## Features
 
-## ✨ Features
+### Discord Bot Commands
+- `/register` - Register account and optionally link Patreon
+- `/activate <voucher>` - Activate subscription voucher (90/365 days)
+- `/vpn` - Generate WireGuard VPN configuration
+- `/machine <name>` - Control panel for single machines (start/stop/extend/reset)
+- `/chain <name>` - Control panel for machine chains
+- `/rtl <name>` - Red Team Labs (shared instances with voting)
+- `/machines` - List all available machines
+- `/chains` - List all available chains
+- `/status` - Check subscription status
 
-### 🎯 Comprehensive Reconnaissance
-- **Subdomain Enumeration**: Aggregate subdomains using Subfinder, Assetfinder
-- **DNS Resolution**: Validate live domains with DNSx
-- **Port Scanning**: Discover open ports using Naabu (top 1000 ports)
-- **HTTP Probing**: Detailed web service analysis with HTTPx
-- **Technology Detection**: Identify web technologies, frameworks, and servers
-- **Screenshot Capture**: Visual documentation of web applications
+### Machine Features
+- Dedicated instances per user
+- Default 2-hour duration with extend option
+- IP assigned at boot
+- Auto-shutdown after timeout
+- Reset to clean state
 
-### 🚨 Vulnerability Assessment
-- **Nuclei Integration**: Automated vulnerability scanning for CVEs, misconfigurations, and exposures
-- **Risk Prioritization**: Intelligent scoring based on findings
-- **Multi-severity Support**: Critical, High, Medium severity filtering
+### Infrastructure
+- **Hypervisor**: Proxmox VE (AWS migration planned)
+- **VPN**: WireGuard with dynamic peer management
+- **Database**: PostgreSQL
+- **Subscription**: Voucher system + Patreon integration
 
-### 🌐 Modern Web Interface
-- **Dark/Light Theme**: Modern, responsive UI with theme toggle
-- **Real-time Progress**: Live scan progress with step-by-step updates
-- **Scan Management**: Create, modify, delete, and rescan projects
-- **Scheduling**: Queue scans or schedule for future execution
-- **Report Viewing**: Beautiful HTML reports with interactive tables
-- **Export Options**: Download results as JSON or CSV
-
-### ⚡ Advanced Features
-- **Job Queue System**: Manage multiple concurrent scans
-- **Scan Scheduling**: Schedule scans for specific date/time
-- **Proxy Support**: Full support for HTTP, HTTPS, SOCKS4, and SOCKS5 proxies with authentication
-- **Progress Tracking**: Real-time progress bars with detailed status
-- **Report Generation**: Self-contained HTML reports with embedded data
-- **Multi-format Export**: JSON and CSV export for all datasets
-- **Persistent Storage**: All scans and results are saved and accessible
-
-## 🚀 Quick Start
+## Quick Start
 
 ### Prerequisites
+- Docker & Docker Compose
+- Proxmox VE server with VM templates
+- WireGuard installed on VPN server
+- Discord Bot token
 
-- Docker and Docker Compose (recommended)
-- OR Python 3.11+ with Go 1.21+ for manual installation
-
-### Option 1: Docker (Recommended)
+### 1. Clone and Configure
 
 ```bash
-# Clone the repository
-git clone https://github.com/yourusername/Overwatch.git
-cd Overwatch
-
-# Build and run with Docker Compose
-docker-compose up -d
-
-# Access the web interface
-open http://localhost:8080
+git clone <repo-url>
+cd vulnlab
+cp .env.example .env
 ```
 
-The web interface will be available at `http://localhost:8080`
+Edit `.env` with your configuration:
+```env
+# Discord
+DISCORD_TOKEN=your_bot_token
+DISCORD_GUILD_ID=your_guild_id
 
-### Option 2: Manual Installation
+# Proxmox
+PROXMOX_HOST=192.168.1.100
+PROXMOX_USER=root@pam
+PROXMOX_PASSWORD=your_password
+PROXMOX_NODE=pve
+
+# WireGuard
+WG_SERVER_PUBLIC_KEY=your_server_pubkey
+WG_SERVER_ENDPOINT=vpn.yourdomain.com:51820
+WG_SERVER_PRIVATE_KEY=your_server_privkey
+```
+
+### 2. Start Services
 
 ```bash
-# Install Python dependencies
+docker-compose up -d
+```
+
+### 3. Create Machine Templates
+
+Via API or directly in database:
+```bash
+curl -X POST http://localhost:8000/admin/machines/templates \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "dvwa",
+    "display_name": "Damn Vulnerable Web App",
+    "description": "Web application security training",
+    "proxmox_template_id": 100,
+    "difficulty": "easy",
+    "category": "web",
+    "os_type": "linux"
+  }'
+```
+
+### 4. Generate Vouchers
+
+```bash
+curl -X POST http://localhost:8000/vouchers/generate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "voucher_type": "90_days",
+    "count": 10
+  }'
+```
+
+## Architecture
+
+```
+┌─────────────────┐     ┌─────────────────┐
+│  Discord Bot    │────▶│  PostgreSQL     │
+└────────┬────────┘     └─────────────────┘
+         │                       ▲
+         ▼                       │
+┌─────────────────┐     ┌───────┴─────────┐
+│  FastAPI        │────▶│  Proxmox VE     │
+│  Backend        │     │  (VM Templates) │
+└────────┬────────┘     └─────────────────┘
+         │
+         ▼
+┌─────────────────┐
+│  WireGuard      │
+│  VPN Server     │
+└─────────────────┘
+```
+
+## Project Structure
+
+```
+vulnlab/
+├── bot/                    # Discord Bot
+│   ├── main.py            # Bot entry point
+│   ├── cogs/              # Command modules
+│   │   ├── registration.py
+│   │   ├── vpn.py
+│   │   ├── machines.py
+│   │   ├── chains.py
+│   │   └── rtl.py
+│   └── utils/
+│       ├── embeds.py      # Discord embeds
+│       └── checks.py      # Permission checks
+├── api/                    # FastAPI Backend
+│   ├── main.py
+│   ├── routers/
+│   │   ├── machines.py
+│   │   ├── vpn.py
+│   │   ├── vouchers.py
+│   │   └── admin.py
+│   └── services/
+│       ├── proxmox.py     # Proxmox integration
+│       └── wireguard.py   # WireGuard management
+├── db/                     # Database
+│   ├── models.py          # SQLAlchemy models
+│   └── database.py        # Connection setup
+├── config/
+│   └── settings.py        # Configuration
+├── docker-compose.yml
+├── Dockerfile
+├── requirements.txt
+└── .env.example
+```
+
+## Database Schema
+
+### Core Tables
+- `users` - Discord users with Patreon linking
+- `vouchers` - Subscription voucher codes
+- `subscriptions` - Active user subscriptions
+- `vpn_configs` - WireGuard configurations
+
+### Machine Tables
+- `machine_templates` - Vulnerable machine definitions
+- `machine_instances` - Running user instances
+- `chains` - Multi-machine scenarios
+- `chain_instances` - Running chain instances
+
+### RT Labs
+- `rtlabs` - Shared lab definitions
+- `rtlab_sessions` - User participation and voting
+
+## Proxmox Setup
+
+### VM Template Requirements
+1. Install QEMU Guest Agent
+2. Configure cloud-init or static networking
+3. Create a "clean" snapshot for reset functionality
+4. Convert to template
+
+### Network Configuration
+- Create a dedicated VLAN for lab machines
+- Configure firewall rules to isolate instances
+- Set up NAT for internet access if needed
+
+## WireGuard Setup
+
+### Server Configuration
+```bash
+# Generate server keys
+wg genkey | tee /etc/wireguard/privatekey | wg pubkey > /etc/wireguard/publickey
+
+# Create wg0.conf
+[Interface]
+PrivateKey = <server_private_key>
+Address = 10.10.0.1/16
+ListenPort = 51820
+PostUp = iptables -A FORWARD -i %i -j ACCEPT; iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
+PostDown = iptables -D FORWARD -i %i -j ACCEPT; iptables -t nat -D POSTROUTING -o eth0 -j MASQUERADE
+
+# Enable and start
+systemctl enable wg-quick@wg0
+systemctl start wg-quick@wg0
+```
+
+## API Endpoints
+
+### Public
+- `GET /health` - Health check
+
+### Machines
+- `GET /machines/templates` - List machine templates
+- `GET /machines/instances` - List user instances
+- `POST /machines/instances/{name}/start` - Start instance
+- `POST /machines/instances/{id}/stop` - Stop instance
+
+### VPN
+- `GET /vpn/config/{user_id}` - Get VPN config
+- `POST /vpn/generate` - Generate new config
+- `POST /vpn/revoke/{user_id}` - Revoke config
+
+### Vouchers
+- `POST /vouchers/generate` - Generate vouchers (admin)
+- `POST /vouchers/activate` - Activate voucher
+- `GET /vouchers/{code}` - Get voucher info
+
+### Admin
+- `GET /admin/stats` - Platform statistics
+- `GET /admin/users` - List users
+- `POST /admin/users/{id}/ban` - Ban user
+- `POST /admin/machines/templates` - Create template
+- `POST /admin/chains` - Create chain
+- `POST /admin/rtlabs` - Create RT Lab
+
+## Development
+
+```bash
+# Create virtual environment
+python -m venv venv
+source venv/bin/activate
+
+# Install dependencies
 pip install -r requirements.txt
 
-# Install Go-based security tools
-go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
-go install -v github.com/projectdiscovery/dnsx/cmd/dnsx@latest
-go install -v github.com/projectdiscovery/httpx/cmd/httpx@latest
-go install -v github.com/projectdiscovery/naabu/v2/cmd/naabu@latest
-go install -v github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest
-go install -v github.com/tomnomnom/assetfinder@latest
+# Run bot
+python -m bot.main
 
-# Also install system dependencies
-# On Ubuntu/Debian:
-sudo apt-get install jq dnsutils whois curl chromium-browser
-
-# Run the web application
-python3 main.py
-# OR
-python -m overwatch_web
+# Run API
+uvicorn api.main:app --reload
 ```
 
-## 📖 Usage
+## License
 
-### Creating a New Scan
-
-1. Click **"+ New Scan"** button
-2. Enter a **Project Name** (e.g., "Example Corp Security Assessment")
-3. Add **Target Domains** (one per line):
-   ```
-   example.com
-   subdomain.example.com
-   ```
-4. Choose launch mode:
-   - **▶️ Run Now**: Start scan immediately
-   - **📋 Add to Queue**: Add to queue (runs when slot available)
-   - **📅 Schedule**: Schedule for specific date/time
-
-### Managing Scans
-
-- **View Results**: Click "📊 View Report" to see detailed findings
-- **Rescan**: Click 🔄 to rerun a scan with same targets
-- **Cancel**: Click ⏹️ to stop a running scan
-- **Modify**: Select scan and click "✏️ Modify" to update
-- **Delete**: Select scan(s) and click "🗑️ Delete"
-
-### Understanding Results
-
-The HTML report includes:
-- **Statistics Dashboard**: Total subdomains, live services, open ports, vulnerabilities
-- **HTTP Services Table**: All discovered web services with status codes, titles, technologies
-- **Port Scan Results**: Open ports per host
-- **Vulnerabilities**: Detected security issues with severity ratings
-
-### Scheduling Scans
-
-1. Click **"+ New Scan"**
-2. Fill in project details
-3. Click **"📅 Schedule"**
-4. Select date and time
-5. Scan will automatically run at scheduled time
-
-### Using Proxy Configuration
-
-Overwatch supports HTTP, HTTPS, SOCKS4, and SOCKS5 proxies for all scanning operations:
-
-1. When creating a scan, click **"🔒 Proxy Configuration"** to expand the proxy settings
-2. Check **"Enable Proxy"**
-3. Configure proxy settings:
-   - **Proxy Type**: Select HTTP, HTTPS, SOCKS4, or SOCKS5
-   - **Proxy Host**: Enter proxy server hostname or IP
-   - **Proxy Port**: Enter proxy port number
-   - **Username/Password** (optional): Add authentication if required
-
-**Supported Proxy Types:**
-- **HTTP/HTTPS**: Standard web proxies (e.g., Squid, Nginx)
-- **SOCKS4**: SOCKS version 4 proxies
-- **SOCKS5**: SOCKS version 5 proxies with authentication support
-
-**Security Note:** Proxy credentials are **not stored** in the database for security reasons. You'll need to re-enter credentials for each scan that requires authentication.
-
-**How It Works:**
-- All reconnaissance tools (Subfinder, DNSx, HTTPx, Nuclei) will route traffic through the configured proxy
-- Port scanning (Naabu) uses raw packets and may bypass proxies
-- Proxy configuration is saved per-project (excluding credentials)
-- Rescans automatically use the saved proxy settings
-
-## 🏗️ Architecture
-
-### Components
-
-```
-Overwatch/
-├── overwatch_scanner.sh       # Main Bash scanner orchestrating all tools
-├── overwatch_web/             # Flask web application
-│   ├── server.py             # Backend API with job management
-│   ├── templates/            # HTML templates
-│   └── static/               # CSS and JavaScript
-├── output/                    # Scan results and reports
-│   └── projects/             # Per-project scan data
-├── Dockerfile                # Container image definition
-└── docker-compose.yml        # Container orchestration
-```
-
-### Scan Pipeline (10 Steps)
-
-1. **Dependency Check**: Verify all required tools are installed
-2. **Subdomain Enumeration**: Subfinder, Assetfinder
-3. **DNS Resolution**: DNSx validation
-4. **HTTP Probing**: HTTPx service discovery
-5. **Port Scanning**: Naabu port detection
-6. **Technology Analysis**: Stack identification
-7. **Screenshot Capture**: Visual documentation
-8. **Vulnerability Scanning**: Nuclei assessment
-9. **Summary Generation**: Aggregate statistics
-10. **Report Generation**: HTML report creation
-
-### Technology Stack
-
-- **Backend**: Python 3.11, Flask
-- **Frontend**: Vanilla JavaScript, Modern CSS
-- **Scanner**: Bash orchestrating ProjectDiscovery tools
-- **Storage**: JSON-based file storage
-- **Container**: Docker with Alpine/Debian base
-
-## 🔧 Configuration
-
-### Environment Variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `OVERWATCH_MAX_CONCURRENT` | `1` | Maximum concurrent scans |
-
-### Docker Configuration
-
-Edit `docker-compose.yml` to customize:
-
-```yaml
-environment:
-  - OVERWATCH_MAX_CONCURRENT=2  # Run 2 scans concurrently
-volumes:
-  - ./output:/app/output  # Persist scan results
-ports:
-  - "8080:8080"  # Change port if needed
-```
-
-## 📊 API Endpoints
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/scans` | GET | List all scans |
-| `/api/scans` | POST | Create new scan |
-| `/api/scans/<slug>` | PUT | Update scan |
-| `/api/scans/<slug>` | DELETE | Delete scan |
-| `/api/scans/<slug>/rescan` | POST | Rescan project |
-| `/api/scans/<slug>/cancel` | POST | Cancel running scan |
-| `/api/status` | GET | Get job queue status |
-| `/projects/<slug>/runs/<run_id>/report` | GET | View HTML report |
-| `/projects/<slug>/runs/<run_id>/download/json` | GET | Download JSON data |
-| `/projects/<slug>/runs/<run_id>/download/csv` | GET | Download CSV archive |
-
-## 🛡️ Security Considerations
-
-- **Authorization**: Add authentication before exposing to internet
-- **Rate Limiting**: Implement rate limits for public deployments
-- **Input Validation**: Domain validation is basic, enhance as needed
-- **Network Access**: Scanner requires internet access for reconnaissance
-- **Privileged Mode**: Docker runs privileged for raw sockets (Naabu)
-
-## 🤝 Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
-
-## 📝 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🙏 Acknowledgments
-
-- **ProjectDiscovery Team**: For the amazing open-source security tools (Nuclei, HTTPx, Naabu, DNSx, Subfinder)
-- **TomNomNom**: For Assetfinder and innovative reconnaissance techniques
-
-## 📧 Contact
-
-For questions, issues, or suggestions, please open an issue on GitHub.
-
----
-
-**⚠️ Disclaimer**: This tool is for authorized security testing only. Always obtain proper authorization before scanning targets you don't own.
+MIT License

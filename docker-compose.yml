@@ -1,17 +1,101 @@
-version: '3.8'
+version: "3.8"
 
 services:
-  overwatch:
-    build: .
-    container_name: overwatch-scanner
-    ports:
-      - "8080:8080"
-    volumes:
-      - ./output:/app/output
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: vulnlab-db
+    restart: unless-stopped
     environment:
-      - OVERWATCH_MAX_CONCURRENT=2
+      POSTGRES_USER: vulnlab
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-vulnlab_secret}
+      POSTGRES_DB: vulnlab
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vulnlab"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Discord Bot
+  bot:
+    build: .
+    container_name: vulnlab-bot
+    restart: unless-stopped
+    command: python -m bot.main
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://vulnlab:${DB_PASSWORD:-vulnlab_secret}@postgres:5432/vulnlab
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./logs:/app/logs
+
+  # API Backend
+  api:
+    build: .
+    container_name: vulnlab-api
+    restart: unless-stopped
+    command: uvicorn api.main:app --host 0.0.0.0 --port 8000
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://vulnlab:${DB_PASSWORD:-vulnlab_secret}@postgres:5432/vulnlab
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./logs:/app/logs
+
+  # WireGuard VPN Server (optional - can run on host)
+  wireguard:
+    image: linuxserver/wireguard
+    container_name: vulnlab-wireguard
     restart: unless-stopped
     cap_add:
-      - NET_RAW
       - NET_ADMIN
-    privileged: true
+      - SYS_MODULE
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Europe/Rome
+      - SERVERURL=${WG_SERVER_ENDPOINT:-vpn.vulnlab.local}
+      - SERVERPORT=51820
+      - PEERS=0
+      - PEERDNS=auto
+      - INTERNAL_SUBNET=10.10.0.0
+      - ALLOWEDIPS=10.10.0.0/16
+    volumes:
+      - wireguard_config:/config
+      - /lib/modules:/lib/modules:ro
+    ports:
+      - "51820:51820/udp"
+    sysctls:
+      - net.ipv4.conf.all.src_valid_mark=1
+      - net.ipv4.ip_forward=1
+
+  # Redis (for caching and rate limiting - optional)
+  redis:
+    image: redis:7-alpine
+    container_name: vulnlab-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+volumes:
+  postgres_data:
+  wireguard_config:
+  redis_data:
+
+networks:
+  default:
+    name: vulnlab-network
