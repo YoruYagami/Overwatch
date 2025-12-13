@@ -13,9 +13,16 @@ sqlalchemy>=2.0.25
 asyncpg>=0.29.0
 alembic>=1.13.0
 
+# Redis (distributed locking)
+redis>=5.0.0
+
 # Proxmox API
 proxmoxer>=2.0.1
 requests>=2.31.0
+
+# AWS
+aioboto3>=12.0.0
+botocore>=1.34.0
 
 # WireGuard
 wgconfig>=0.2.2
