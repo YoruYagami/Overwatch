@@ -52,6 +52,17 @@ class Settings(BaseSettings):
     patreon_client_secret: Optional[str] = None
     patreon_creator_access_token: Optional[str] = None
     patreon_campaign_id: Optional[str] = None
+    patreon_sync_interval_minutes: int = 60  # How often to sync with Patreon
+
+    # Patreon tier IDs (from your campaign)
+    patreon_tier1_id: Optional[str] = None  # e.g., $5/month
+    patreon_tier2_id: Optional[str] = None  # e.g., $15/month
+    patreon_tier3_id: Optional[str] = None  # e.g., $30/month
+
+    # Discord role IDs for each tier
+    discord_role_tier1: Optional[int] = None
+    discord_role_tier2: Optional[int] = None
+    discord_role_tier3: Optional[int] = None
 
     # =========================================================================
     # MACHINE SETTINGS
