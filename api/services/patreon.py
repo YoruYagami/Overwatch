@@ -150,7 +150,7 @@ class PatreonService:
                 "fields[member]": "email,full_name,patron_status,pledge_relationship_start,currently_entitled_amount_cents,last_charge_date,last_charge_status",
                 "fields[user]": "email,full_name,social_connections",
                 "fields[tier]": "title,amount_cents",
-                "page[size]": "100",
+                "page[size]": "1000",  # Max allowed by Patreon API
             }
 
             if cursor:
