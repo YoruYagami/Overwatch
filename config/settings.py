@@ -38,16 +38,12 @@ class Settings(BaseSettings):
     aws_key_name: Optional[str] = None  # SSH key pair name
 
     # =========================================================================
-    # WIREGUARD VPN (runs as VM on Proxmox)
+    # WIREGUARD VPN (via wg-easy container)
     # =========================================================================
-    wg_proxmox_vmid: Optional[int] = None  # VMID of WireGuard VM on Proxmox
-    wg_server_public_key: Optional[str] = None
-    wg_server_endpoint: Optional[str] = None  # Public endpoint (e.g., ionos.domain.com:51820)
-    wg_server_private_key: Optional[str] = None
-    wg_interface: str = "wg0"
-    wg_config_path: str = "/etc/wireguard"
+    wg_easy_api_url: str = "http://localhost:51821"  # wg-easy API endpoint
+    wg_easy_password: Optional[str] = None  # wg-easy admin password
+    wg_server_endpoint: Optional[str] = None  # Public endpoint (e.g., vpn.domain.com:51820)
     wg_network: str = "10.10.0.0/16"
-    wg_dns: str = "10.10.0.1"
 
     # =========================================================================
     # PATREON INTEGRATION

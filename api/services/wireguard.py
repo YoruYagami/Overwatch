@@ -1,22 +1,18 @@
 """
-WireGuard Service via Proxmox
+WireGuard Service via wg-easy API
 
-Manages WireGuard peers on a VM running on Proxmox.
-Commands are executed via QEMU Guest Agent, so the bot
-doesn't need direct access to the WireGuard server.
+Manages WireGuard peers using wg-easy container REST API.
+https://github.com/wg-easy/wg-easy
 """
 
 import asyncio
-import base64
-import ipaddress
 import logging
-import secrets
-from typing import Tuple, Optional, Dict, Any
+from datetime import datetime, timedelta
+from typing import Optional, Dict, Any, List
 
+import aiohttp
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
 
 from config import settings
 from db import VPNConfig
@@ -26,263 +22,308 @@ logger = logging.getLogger("vulnlab.wireguard")
 
 class WireGuardService:
     """
-    WireGuard management service via Proxmox.
+    WireGuard management service via wg-easy API.
 
-    Executes WireGuard commands on a VM through Proxmox QEMU Guest Agent.
-    No local WireGuard installation required on the bot server.
+    wg-easy provides a REST API for managing WireGuard peers,
+    including automatic config generation and expiration.
     """
 
-    def __init__(self, proxmox_client=None):
-        self.interface = settings.wg_interface
-        self.network = ipaddress.ip_network(settings.wg_network)
-        self.server_public_key = settings.wg_server_public_key
+    def __init__(self):
+        self.api_url = getattr(settings, 'wg_easy_api_url', 'http://localhost:51821')
+        self.password = getattr(settings, 'wg_easy_password', '')
         self.server_endpoint = settings.wg_server_endpoint
-        self.dns = settings.wg_dns
+        self.network = settings.wg_network
 
-        # Proxmox settings for WireGuard VM
-        self.wg_vm_id = getattr(settings, 'wg_proxmox_vmid', None)
-        self.proxmox_node = settings.proxmox_node
+        self._session: Optional[aiohttp.ClientSession] = None
+        self._session_cookie: Optional[str] = None
 
-        self._proxmox = proxmox_client
-        self._lock = asyncio.Lock()
+    async def _get_session(self) -> aiohttp.ClientSession:
+        """Get or create aiohttp session."""
+        if self._session is None or self._session.closed:
+            self._session = aiohttp.ClientSession()
+        return self._session
 
-    def _get_proxmox(self):
-        """Get or create Proxmox client."""
-        if self._proxmox is None:
-            from proxmoxer import ProxmoxAPI
-            self._proxmox = ProxmoxAPI(
-                settings.proxmox_host,
-                user=settings.proxmox_user,
-                password=settings.proxmox_password,
-                verify_ssl=settings.proxmox_verify_ssl,
-                timeout=30,
-            )
-        return self._proxmox
-
-    async def _run_on_wg_server(self, command: str) -> Tuple[int, str, str]:
-        """
-        Execute a command on the WireGuard VM via QEMU Guest Agent.
-
-        Returns:
-            Tuple of (exit_code, stdout, stderr)
-        """
-        if not self.wg_vm_id:
-            logger.warning("WG_PROXMOX_VMID not configured, skipping command")
-            return (0, "", "")
-
+    async def _authenticate(self) -> bool:
+        """Authenticate with wg-easy and get session cookie."""
         try:
-            proxmox = self._get_proxmox()
+            session = await self._get_session()
 
-            # Execute command via guest agent
-            loop = asyncio.get_event_loop()
-
-            def _exec():
-                # Start the command
-                result = proxmox.nodes(self.proxmox_node).qemu(self.wg_vm_id).agent.exec.post(
-                    command=command,
-                )
-                return result
-
-            result = await loop.run_in_executor(None, _exec)
-            pid = result.get('pid')
-
-            # Wait for command to complete and get output
-            await asyncio.sleep(1)
-
-            def _get_status():
-                return proxmox.nodes(self.proxmox_node).qemu(self.wg_vm_id).agent('exec-status').get(
-                    pid=pid,
-                )
-
-            # Poll for completion
-            for _ in range(30):
-                status = await loop.run_in_executor(None, _get_status)
-                if status.get('exited'):
-                    stdout = base64.b64decode(status.get('out-data', '')).decode() if status.get('out-data') else ''
-                    stderr = base64.b64decode(status.get('err-data', '')).decode() if status.get('err-data') else ''
-                    exitcode = status.get('exitcode', 0)
-                    return (exitcode, stdout, stderr)
-                await asyncio.sleep(0.5)
-
-            return (1, "", "Command timed out")
+            async with session.post(
+                f"{self.api_url}/api/session",
+                json={"password": self.password},
+            ) as resp:
+                if resp.status == 200:
+                    # Get session cookie
+                    self._session_cookie = resp.cookies.get('connect.sid')
+                    logger.debug("Authenticated with wg-easy")
+                    return True
+                else:
+                    logger.error(f"wg-easy auth failed: {resp.status}")
+                    return False
 
         except Exception as e:
-            logger.error(f"Failed to execute command on WG server: {e}")
-            return (1, "", str(e))
+            logger.error(f"wg-easy auth error: {e}")
+            return False
 
-    def generate_keypair(self) -> Tuple[str, str]:
-        """
-        Generate a WireGuard keypair using Python cryptography.
-        No local wg tools required.
-        """
-        # Generate X25519 private key
-        private_key = X25519PrivateKey.generate()
-
-        # Get raw private key bytes
-        private_bytes = private_key.private_bytes(
-            encoding=serialization.Encoding.Raw,
-            format=serialization.PrivateFormat.Raw,
-            encryption_algorithm=serialization.NoEncryption()
-        )
-
-        # Get public key bytes
-        public_bytes = private_key.public_key().public_bytes(
-            encoding=serialization.Encoding.Raw,
-            format=serialization.PublicFormat.Raw
-        )
-
-        # Base64 encode for WireGuard format
-        private_key_b64 = base64.b64encode(private_bytes).decode('ascii')
-        public_key_b64 = base64.b64encode(public_bytes).decode('ascii')
-
-        return private_key_b64, public_key_b64
-
-    async def allocate_ip(self, session: AsyncSession) -> str:
-        """Allocate an IP address from the VPN pool."""
-        result = await session.execute(
-            select(VPNConfig.assigned_ip)
-            .where(VPNConfig.is_active == True)
-            .where(VPNConfig.is_revoked == False)
-        )
-        allocated_ips = {row[0] for row in result.all()}
-
-        # Find next available IP (skip .0, .1, .255)
-        for host in self.network.hosts():
-            ip_str = str(host)
-            # Skip server IP (.1) and common reserved
-            if ip_str.endswith(".0") or ip_str.endswith(".1") or ip_str.endswith(".255"):
-                continue
-            if ip_str not in allocated_ips:
-                return ip_str
-
-        raise RuntimeError("No available IP addresses in the VPN pool")
-
-    def generate_client_config(
+    async def _api_request(
         self,
-        private_key: str,
-        address: str,
-    ) -> str:
-        """Generate a WireGuard client configuration file."""
-        config = f"""[Interface]
-PrivateKey = {private_key}
-Address = {address}/32
-DNS = {self.dns}
+        method: str,
+        endpoint: str,
+        json: Dict = None,
+        retry: bool = True,
+    ) -> Optional[Dict]:
+        """Make authenticated API request to wg-easy."""
+        if not self._session_cookie:
+            if not await self._authenticate():
+                raise RuntimeError("Failed to authenticate with wg-easy")
 
-[Peer]
-PublicKey = {self.server_public_key}
-AllowedIPs = 10.10.0.0/16
-Endpoint = {self.server_endpoint}
-PersistentKeepalive = 25
-"""
-        return config
+        try:
+            session = await self._get_session()
+            cookies = {'connect.sid': self._session_cookie} if self._session_cookie else {}
 
-    async def add_peer(
-        self,
-        public_key: str,
-        allowed_ips: str,
-    ) -> None:
-        """Add a peer to the WireGuard server via Proxmox."""
-        async with self._lock:
-            command = f"wg set {self.interface} peer {public_key} allowed-ips {allowed_ips}"
+            async with session.request(
+                method,
+                f"{self.api_url}{endpoint}",
+                json=json,
+                cookies=cookies,
+            ) as resp:
+                if resp.status == 401 and retry:
+                    # Session expired, re-authenticate
+                    self._session_cookie = None
+                    return await self._api_request(method, endpoint, json, retry=False)
 
-            exitcode, stdout, stderr = await self._run_on_wg_server(command)
+                if resp.status >= 400:
+                    text = await resp.text()
+                    logger.error(f"wg-easy API error: {resp.status} - {text}")
+                    return None
 
-            if exitcode != 0:
-                logger.error(f"Failed to add WireGuard peer: {stderr}")
-                raise RuntimeError(f"Failed to add peer: {stderr}")
+                if resp.content_type == 'application/json':
+                    return await resp.json()
+                else:
+                    return {"text": await resp.text()}
 
-            # Save configuration
-            await self._save_config()
-
-            logger.info(f"Added WireGuard peer: {public_key[:20]}...")
-
-    async def remove_peer(self, public_key: str) -> None:
-        """Remove a peer from the WireGuard server via Proxmox."""
-        async with self._lock:
-            command = f"wg set {self.interface} peer {public_key} remove"
-
-            exitcode, stdout, stderr = await self._run_on_wg_server(command)
-
-            if exitcode != 0:
-                logger.error(f"Failed to remove WireGuard peer: {stderr}")
-                raise RuntimeError(f"Failed to remove peer: {stderr}")
-
-            # Save configuration
-            await self._save_config()
-
-            logger.info(f"Removed WireGuard peer: {public_key[:20]}...")
-
-    async def _save_config(self) -> None:
-        """Save current WireGuard configuration on the server."""
-        command = f"wg-quick save {self.interface}"
-        exitcode, stdout, stderr = await self._run_on_wg_server(command)
-
-        if exitcode != 0:
-            logger.warning(f"Failed to save WireGuard config: {stderr}")
-
-    async def get_peer_status(self, public_key: str) -> Optional[Dict[str, Any]]:
-        """Get status of a specific peer."""
-        command = f"wg show {self.interface} dump"
-        exitcode, stdout, stderr = await self._run_on_wg_server(command)
-
-        if exitcode != 0:
+        except Exception as e:
+            logger.error(f"wg-easy API request failed: {e}")
             return None
 
-        lines = stdout.strip().split("\n")
-        for line in lines[1:]:  # Skip header
-            parts = line.split("\t")
-            if len(parts) >= 5 and parts[0] == public_key:
-                return {
-                    "public_key": parts[0],
-                    "preshared_key": parts[1] if parts[1] != "(none)" else None,
-                    "endpoint": parts[2] if parts[2] != "(none)" else None,
-                    "allowed_ips": parts[3],
-                    "latest_handshake": int(parts[4]) if parts[4] != "0" else None,
-                    "transfer_rx": int(parts[5]) if len(parts) > 5 else 0,
-                    "transfer_tx": int(parts[6]) if len(parts) > 6 else 0,
-                }
+    async def create_client(self, name: str) -> Optional[Dict[str, Any]]:
+        """
+        Create a new WireGuard client/peer.
+
+        Returns:
+            Dict with client info including id, name, publicKey, etc.
+        """
+        result = await self._api_request(
+            "POST",
+            "/api/wireguard/client",
+            json={"name": name},
+        )
+
+        if result:
+            logger.info(f"Created WireGuard client: {name}")
+
+        return result
+
+    async def delete_client(self, client_id: str) -> bool:
+        """Delete a WireGuard client."""
+        result = await self._api_request(
+            "DELETE",
+            f"/api/wireguard/client/{client_id}",
+        )
+
+        if result is not None:
+            logger.info(f"Deleted WireGuard client: {client_id}")
+            return True
+
+        return False
+
+    async def get_client_config(self, client_id: str) -> Optional[str]:
+        """Get WireGuard configuration file for a client."""
+        result = await self._api_request(
+            "GET",
+            f"/api/wireguard/client/{client_id}/configuration",
+        )
+
+        if result and "text" in result:
+            return result["text"]
 
         return None
 
-    async def get_all_peers(self) -> list:
-        """Get all peers on the WireGuard interface."""
-        command = f"wg show {self.interface} peers"
-        exitcode, stdout, stderr = await self._run_on_wg_server(command)
+    async def enable_client(self, client_id: str) -> bool:
+        """Enable a WireGuard client."""
+        result = await self._api_request(
+            "POST",
+            f"/api/wireguard/client/{client_id}/enable",
+        )
+        return result is not None
 
-        if exitcode != 0:
-            return []
+    async def disable_client(self, client_id: str) -> bool:
+        """Disable a WireGuard client."""
+        result = await self._api_request(
+            "POST",
+            f"/api/wireguard/client/{client_id}/disable",
+        )
+        return result is not None
 
-        peers = stdout.strip().split("\n")
-        return [p for p in peers if p]
+    async def get_clients(self) -> List[Dict[str, Any]]:
+        """Get all WireGuard clients."""
+        result = await self._api_request("GET", "/api/wireguard/client")
+        return result if isinstance(result, list) else []
 
-    async def get_server_status(self) -> Optional[Dict[str, Any]]:
-        """Get WireGuard server status."""
-        command = f"wg show {self.interface}"
-        exitcode, stdout, stderr = await self._run_on_wg_server(command)
+    async def get_client(self, client_id: str) -> Optional[Dict[str, Any]]:
+        """Get a specific client by ID."""
+        clients = await self.get_clients()
+        for client in clients:
+            if client.get("id") == client_id:
+                return client
+        return None
 
-        if exitcode != 0:
-            return None
+    # =========================================================================
+    # High-level methods for VulnLab integration
+    # =========================================================================
+
+    async def generate_vpn_config(
+        self,
+        user_id: int,
+        username: str,
+        session: AsyncSession,
+    ) -> Dict[str, Any]:
+        """
+        Generate VPN configuration for a user.
+
+        Creates client in wg-easy, stores in database, returns config.
+        """
+        # Check for existing active config
+        result = await session.execute(
+            select(VPNConfig)
+            .where(VPNConfig.user_id == user_id)
+            .where(VPNConfig.is_active == True)
+            .where(VPNConfig.is_revoked == False)
+        )
+        existing = result.scalar_one_or_none()
+
+        if existing and not existing.is_expired:
+            # Return existing config
+            config = await self.get_client_config(existing.public_key)
+            return {
+                "config": config,
+                "client_id": existing.public_key,
+                "expires_at": existing.expires_at,
+                "is_new": False,
+            }
+
+        # Create new client in wg-easy
+        client_name = f"vulnlab-{user_id}-{username}"
+        client = await self.create_client(client_name)
+
+        if not client:
+            raise RuntimeError("Failed to create WireGuard client")
+
+        client_id = client.get("id")
+        public_key = client.get("publicKey")
+        address = client.get("address")
+
+        # Get configuration
+        config = await self.get_client_config(client_id)
+
+        if not config:
+            raise RuntimeError("Failed to get WireGuard configuration")
+
+        # Calculate expiration
+        expires_at = datetime.utcnow() + timedelta(days=settings.vpn_cert_validity_days)
+
+        # Store in database
+        vpn_config = VPNConfig(
+            user_id=user_id,
+            private_key=client_id,  # Store client ID for reference
+            public_key=client_id,   # Use client ID as identifier
+            assigned_ip=address.split("/")[0] if address else "",
+            expires_at=expires_at,
+        )
+        session.add(vpn_config)
+        await session.commit()
+
+        logger.info(f"Generated VPN config for user {user_id}, client: {client_id}")
 
         return {
-            "interface": self.interface,
-            "output": stdout,
-            "peer_count": len(await self.get_all_peers()),
+            "config": config,
+            "client_id": client_id,
+            "address": address,
+            "expires_at": expires_at,
+            "is_new": True,
         }
 
-    def generate_server_config(
+    async def revoke_vpn_config(
         self,
-        private_key: str,
-        listen_port: int = 51820,
-        address: str = "10.10.0.1/16",
-    ) -> str:
-        """Generate WireGuard server configuration."""
-        config = f"""[Interface]
-PrivateKey = {private_key}
-Address = {address}
-ListenPort = {listen_port}
-PostUp = iptables -A FORWARD -i %i -j ACCEPT; iptables -A FORWARD -o %i -j ACCEPT; iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
-PostDown = iptables -D FORWARD -i %i -j ACCEPT; iptables -D FORWARD -o %i -j ACCEPT; iptables -t nat -D POSTROUTING -o eth0 -j MASQUERADE
+        user_id: int,
+        session: AsyncSession,
+    ) -> bool:
+        """Revoke a user's VPN configuration."""
+        result = await session.execute(
+            select(VPNConfig)
+            .where(VPNConfig.user_id == user_id)
+            .where(VPNConfig.is_active == True)
+            .where(VPNConfig.is_revoked == False)
+        )
+        vpn_config = result.scalar_one_or_none()
 
-# Peers will be added dynamically
-"""
-        return config
+        if not vpn_config:
+            return False
+
+        # Delete from wg-easy
+        client_id = vpn_config.public_key
+        await self.delete_client(client_id)
+
+        # Mark as revoked in database
+        vpn_config.is_revoked = True
+        vpn_config.is_active = False
+        await session.commit()
+
+        logger.info(f"Revoked VPN config for user {user_id}")
+        return True
+
+    async def cleanup_expired(self, session: AsyncSession) -> int:
+        """Clean up expired VPN configurations."""
+        result = await session.execute(
+            select(VPNConfig)
+            .where(VPNConfig.is_active == True)
+            .where(VPNConfig.is_revoked == False)
+            .where(VPNConfig.expires_at < datetime.utcnow())
+        )
+        expired = result.scalars().all()
+
+        count = 0
+        for vpn_config in expired:
+            try:
+                await self.delete_client(vpn_config.public_key)
+                vpn_config.is_active = False
+                vpn_config.is_revoked = True
+                count += 1
+            except Exception as e:
+                logger.error(f"Failed to cleanup VPN {vpn_config.id}: {e}")
+
+        await session.commit()
+        logger.info(f"Cleaned up {count} expired VPN configs")
+        return count
+
+    async def get_server_status(self) -> Optional[Dict[str, Any]]:
+        """Get wg-easy server status."""
+        clients = await self.get_clients()
+
+        if clients is None:
+            return None
+
+        enabled = sum(1 for c in clients if c.get("enabled", True))
+        connected = sum(1 for c in clients if c.get("latestHandshakeAt"))
+
+        return {
+            "total_clients": len(clients),
+            "enabled_clients": enabled,
+            "connected_clients": connected,
+            "endpoint": self.server_endpoint,
+        }
+
+    async def close(self):
+        """Close the aiohttp session."""
+        if self._session and not self._session.closed:
+            await self._session.close()
